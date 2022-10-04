@@ -5,6 +5,6 @@ To use this program, simply clone the entire repository , and place your reads w
 ```
 /
 |script1.sh
-|workflow\_scrip.sh
+|workflowt_script.sh
 |----|reads
 ```
