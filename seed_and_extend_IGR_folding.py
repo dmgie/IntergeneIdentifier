@@ -3,8 +3,13 @@ __email__ = 'alexander.frotscher@student.uni-tuebingen.de'
 
 import argparse
 import math
+import subprocess
+from sys import stdin, stdout
 import pandas as pd
 import numpy as np
+from subprocess import Popen, PIPE
+
+import win32con
 
 
 def read_fasta(file_name: str) -> list:
@@ -64,10 +69,9 @@ def extend_window_right(depth: list, end_pos: int, expand_threshold: int, maximu
             if final_pos - end_pos > math.floor(
                     0.5 * maximum_growth):  # ncRNA is not larger than defined, two segments -> left, right -> 0.5
                 break
-            if depth[i] >= expand_threshold:
+            elif depth[i] >= expand_threshold:
                 final_pos += 1
             else:
-                # maybe calc energy
                 break
         return final_pos
 
@@ -107,7 +111,7 @@ def extend_window_left(depth: list, start_pos: int, expand_threshold: int, maxim
 
 
 def find_core(igr: str, depth: list, window_size: int, depth_cutoff: int, expand_threshold: int,
-              maximum_growth: int) -> list:
+              maximum_growth: int, mode: str) -> list:
     """
     This function finds the core regions in the IGR 
 
@@ -125,6 +129,8 @@ def find_core(igr: str, depth: list, window_size: int, depth_cutoff: int, expand
         The threshold that determines whether the sequence is increased
     maximum_growth: int
         The maximum number of nucleotides the core is allowed to grow
+    mode: str
+        The mode for protein or RNA
     Returns
     -------
     The positions of all cores that could correspond to an ncRNA
@@ -138,6 +144,19 @@ def find_core(igr: str, depth: list, window_size: int, depth_cutoff: int, expand
             if score >= depth_cutoff:
                 start_pos = extend_window_left(depth, i, expand_threshold, maximum_growth)
                 end_pos = extend_window_right(depth, j, expand_threshold, maximum_growth)
+                if mode == 'r':
+                    # p = subprocess.Popen('C:\Program Files (x86)\ViennaRNA Package\RNAfold.exe', stdin=PIPE,
+                    #                     stdout=PIPE)
+                    # ans = p.communicate(igr[start_pos:end_pos].encode())
+                    with open('fold.txt', 'w+') as writer:
+                        writer.write(f'>my RNA\n{igr[start_pos:end_pos]}')
+                    ans = subprocess.check_output(
+                        f'C:\Program Files (x86)\ViennaRNA Package\RNAfold.exe fold.txt')
+                    # ans = ans.decode().split(' ')[-1].strip()[:-1]
+                    ans = ans.decode().split(' ')[-1].strip().replace('(', '').replace(')', '')
+                    if float(ans) < -20.0:
+                        start_pos = extend_window_left(depth, i, expand_threshold/2, maximum_growth)
+                        end_pos = extend_window_right(depth, j, expand_threshold/2, maximum_growth)
                 my_cores.append([start_pos, end_pos])
                 i = end_pos
             else:
@@ -176,13 +195,15 @@ def main():
                     if len(seq[1]) != len(depth):
                         print(
                             f'Sequence length is not the same as coverage length! {gen} is not taken into account for {sample_and_time}. ')
-                        if len(seq[1])-1 == len(depth):
+                        if len(seq[1]) - 1 == len(depth):
                             print(f'The problem is samtools. Let me help you with that!'
                                   f' Appends depth count that is the mean over the depths for first base!')
                             np.insert(depth, 0, np.mean(depth))
-                            cores = find_core(seq[1], depth, window_size, args.threshold, args.expand, maximum_growth)
+                            cores = find_core(seq[1], depth, window_size, args.threshold, args.expand, maximum_growth,
+                                              args.category)
                     else:
-                        cores = find_core(seq[1], depth, window_size, args.threshold, args.expand, maximum_growth)
+                        cores = find_core(seq[1], depth, window_size, args.threshold, args.expand, maximum_growth,
+                                          args.category)
                     if len(cores) > 0:
                         for i in range(len(cores) - 1, 0, -1):
                             core = cores[i]
